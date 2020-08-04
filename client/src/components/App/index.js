@@ -6,6 +6,7 @@ import LoadingBar from 'react-redux-loading-bar';
 
 import 'react-table/react-table.css';
 import '../ui/Tabler.css';
+import '../ui/Tabler-DarkPatch.css';
 import '../ui/ReactTable.css';
 import './index.css';
 
