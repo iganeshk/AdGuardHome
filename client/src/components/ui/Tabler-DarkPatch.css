@@ -196,6 +196,13 @@ a:hover {
 
 
 /* Tabler - React Components Patch */
+.card-table .logs__text--nowrap {
+    color: #ef952e !important;
+}
+
+.card-table .logs__text, .logs__row .list-unstyled li {
+    color: #ef952e !important;
+}
 
 .logs__table {
     background-color: #171717 !important;
@@ -206,8 +213,24 @@ a:hover {
     border: solid 1px #333 !important;
 }
 
-.logs__table .-pageInfo {
+.ReactTable .-pagination .-pageInfo {
     border: 1px solid #333 !important;
+}
+
+.ReactTable .-pagination .-btn {
+    border: 1px solid #333 !important;
+}
+
+.tooltip-custom__container {
+    background-color: #171717 !important;
+}
+
+small, .small {
+    color: #ef952e !important;
+}
+
+.logs__text, .logs__row .list-unstyled li {
+    color: lightgray !important;
 }
 
 .ReactTable .rt-noData {

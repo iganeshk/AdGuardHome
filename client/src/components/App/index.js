@@ -29,8 +29,6 @@ import SetupGuide from '../../containers/SetupGuide';
 import Toasts from '../Toasts';
 import Footer from '../ui/Footer';
 import Status from '../ui/Status';
-import UpdateTopline from '../ui/UpdateTopline';
-import UpdateOverlay from '../ui/UpdateOverlay';
 import EncryptionTopline from '../ui/EncryptionTopline';
 import Icons from '../ui/Icons';
 import i18n from '../../i18n';
@@ -75,23 +73,10 @@ class App extends Component {
 
     render() {
         const { dashboard, encryption, getVersion } = this.props;
-        const updateAvailable = dashboard.isCoreRunning && dashboard.isUpdateAvailable;
 
         return (
             <HashRouter hashType="noslash">
                 <Fragment>
-                    {updateAvailable && (
-                        <Fragment>
-                            <UpdateTopline
-                                url={dashboard.announcementUrl}
-                                version={dashboard.newVersion}
-                                canAutoUpdate={dashboard.canAutoUpdate}
-                                getUpdate={this.handleUpdate}
-                                processingUpdate={dashboard.processingUpdate}
-                            />
-                            <UpdateOverlay processingUpdate={dashboard.processingUpdate} />
-                        </Fragment>
-                    )}
                     {!encryption.processing && (
                         <EncryptionTopline notAfter={encryption.not_after} />
                     )}
