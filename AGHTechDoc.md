@@ -12,6 +12,7 @@ Contents:
 * Updating
 	* Get version command
 	* Update command
+* API: Get global status
 * TLS
 	* API: Get TLS configuration
 	* API: Set TLS configuration
@@ -22,12 +23,15 @@ Contents:
 	* Update client
 	* Delete client
 	* API: Find clients by IP
-* Enable DHCP server
-	* "Show DHCP status" command
-	* "Check DHCP" command
-	* "Enable DHCP" command
+* DHCP server
+	* DHCP server in DNS
+	* DHCP Custom Options
+	* API: Show DHCP interfaces
+	* API: Show DHCP status
+	* API: Check DHCP
+	* API: Enable DHCP
 	* Static IP check/set
-	* Add a static lease
+	* API: Add a static lease
 	* API: Reset DHCP configuration
 * DNS general settings
 	* API: Get DNS general settings
@@ -64,6 +68,8 @@ Contents:
 	* API: Log in
 	* API: Log out
 	* API: Get current user info
+* Safe services
+* ipset
 
 
 ## Relations between subsystems
@@ -374,9 +380,31 @@ Error response:
 UI shows error message "Auto-update has failed"
 
 
-## Enable DHCP server
+## API: Get global status
 
-Algorithm:
+Request:
+
+	GET /control/status
+
+Response:
+
+	200 OK
+
+	{
+	"dns_addresses":["..."],
+	"dns_port":53,
+	"http_port":3000,
+	"language":"en",
+	"protection_enabled":true,
+	"running":true,
+	"dhcp_available":true,
+	"version":"undefined"
+	}
+
+
+## DHCP server
+
+Enable DHCP server algorithm:
 
 * UI shows DHCP configuration screen with "Enabled DHCP" button disabled, and "Check DHCP" button enabled
 * User clicks on "Check DHCP"; UI sends request to server
@@ -388,7 +416,58 @@ Algorithm:
 * UI shows the status
 
 
-### "Show DHCP status" command
+### DHCP server in DNS
+
+DHCP leases are used in several ways by DNS module.
+
+* For "A" DNS reqeust we reply with an IP address leased by our DHCP server.
+
+		< A bills-notebook.lan.
+		> A bills-notebook.lan. = 192.168.1.100
+
+* For "PTR" DNS request we reply with a hostname from an active DHCP lease.
+
+		< PTR 100.1.168.192.in-addr.arpa.
+		> PTR 100.1.168.192.in-addr.arpa. = bills-notebook.
+
+
+### DHCP Custom Options
+
+Option with arbitrary hexadecimal data:
+
+	DEC_CODE hex HEX_DATA
+
+where DEC_CODE is a decimal DHCPv4 option code in range [1..255]
+
+Option with IP data (only 1 IP is supported):
+
+	DEC_CODE ip IP_ADDR
+
+
+### API: Show DHCP interfaces
+
+Request:
+
+	GET /control/dhcp/interfaces
+
+Response:
+
+	200 OK
+
+	{
+		"iface_name":{
+			"name":"iface_name",
+			"hardware_address":"...",
+			"ipv4_addresses":["ipv4 addr", ...],
+			"ipv6_addresses":["ipv6 addr", ...],
+			"gateway_ip":"...",
+			"flags":"up|broadcast|multicast"
+		}
+		...
+	}
+
+
+### API: Show DHCP status
 
 Request:
 
@@ -399,16 +478,19 @@ Response:
 	200 OK
 
 	{
-		"config":{
-			"enabled":false,
-			"interface_name":"...",
+		"enabled":false,
+		"interface_name":"...",
+		"v4":{
 			"gateway_ip":"...",
 			"subnet_mask":"...",
-			"range_start":"...",
+			"range_start":"...", // if empty: DHCPv4 won't be enabled
 			"range_end":"...",
 			"lease_duration":60,
-			"icmp_timeout_msec":0
 		},
+		"v6":{
+			"range_start":"...", // if empty: DHCPv6 won't be enabled
+			"lease_duration":60,
+		}
 		"leases":[
 			{"ip":"...","mac":"...","hostname":"...","expires":"..."}
 			...
@@ -420,7 +502,7 @@ Response:
 	}
 
 
-### "Check DHCP" command
+### API: Check DHCP
 
 Request:
 
@@ -433,13 +515,21 @@ Response:
 	200 OK
 
 	{
-		"other_server": {
-			"found": "yes|no|error",
-			"error": "Error message", // set if found=error
-		},
-		"static_ip": {
-			"static": "yes|no|error",
-			"ip": "<Current dynamic IP address>", // set if static=no
+		v4: {
+			"other_server": {
+				"found": "yes|no|error",
+				"error": "Error message", // set if found=error
+			},
+			"static_ip": {
+				"static": "yes|no|error",
+				"ip": "<Current dynamic IP address>", // set if static=no
+			}
+		}
+		v6: {
+			"other_server": {
+				"found": "yes|no|error",
+				"error": "Error message", // set if found=error
+			},
 		}
 	}
 
@@ -460,21 +550,26 @@ If `static_ip.static` is:
 		In order to use DHCP server a static IP address must be set.  We failed to determine if this network interface is configured using static IP address.  Please set a static IP address manually.
 
 
-### "Enable DHCP" command
+### API: Enable DHCP
 
 Request:
 
 	POST /control/dhcp/set_config
 
 	{
-		"enabled":true,
-		"interface_name":"vboxnet0",
+	"enabled":true,
+	"interface_name":"vboxnet0",
+	"v4":{
 		"gateway_ip":"192.169.56.1",
 		"subnet_mask":"255.255.255.0",
-		"range_start":"192.169.56.3",
-		"range_end":"192.169.56.3",
+		"range_start":"192.169.56.100",
+		"range_end":"192.169.56.200", // Note: first 3 octects must match "range_start"
 		"lease_duration":60,
-		"icmp_timeout_msec":0
+	},
+	"v6":{
+		"range_start":"...",
+		"lease_duration":60,
+	}
 	}
 
 Response:
@@ -482,6 +577,10 @@ Response:
 	200 OK
 
 	OK
+
+For v4, if range_start = "1.2.3.4", the range_end must be "1.2.3.X" where X > 4.
+
+For v6, if range_start = "2001::1", the last IP is "2001:ff".
 
 
 ### Static IP check/set
@@ -578,7 +677,7 @@ or:
 	systemctl restart system-networkd
 
 
-### Add a static lease
+### API: Add a static lease
 
 Request:
 
@@ -644,6 +743,7 @@ Response:
 	"server_name":"...",
 	"port_https":443,
 	"port_dns_over_tls":853,
+	"port_dns_over_quic":784,
 	"certificate_chain":"...",
 	"private_key":"...",
 	"certificate_path":"...",
@@ -675,6 +775,7 @@ Request:
 	"force_https":false,
 	"port_https":443,
 	"port_dns_over_tls":853,
+	"port_dns_over_quic":784,
 	"certificate_chain":"...",
 	"private_key":"...",
 	"certificate_path":"...", // if set, certificate_chain must be empty
@@ -887,11 +988,12 @@ Response:
 
 	{
 		"upstream_dns": ["tls://...", ...],
+		"upstream_dns_file": "",
 		"bootstrap_dns": ["1.2.3.4", ...],
 
 		"protection_enabled": true | false,
 		"ratelimit": 1234,
-		"blocking_mode": "default" | "nxdomain" | "null_ip" | "custom_ip",
+		"blocking_mode": "default" | "refused" | "nxdomain" | "null_ip" | "custom_ip",
 		"blocking_ipv4": "1.2.3.4",
 		"blocking_ipv6": "1:2:3::4",
 		"edns_cs_enabled": true | false,
@@ -912,11 +1014,12 @@ Request:
 
 	{
 		"upstream_dns": ["tls://...", ...],
+		"upstream_dns_file": "",
 		"bootstrap_dns": ["1.2.3.4", ...],
 
 		"protection_enabled": true | false,
 		"ratelimit": 1234,
-		"blocking_mode": "default" | "nxdomain" | "null_ip" | "custom_ip",
+		"blocking_mode": "default" | "refused" | "nxdomain" | "null_ip" | "custom_ip",
 		"blocking_ipv4": "1.2.3.4",
 		"blocking_ipv6": "1:2:3::4",
 		"edns_cs_enabled": true | false,
@@ -1340,6 +1443,11 @@ When UI asks for data from query log (see "API: Get query log"), server reads th
 
 We store data for a limited amount of time - the log file is automatically rotated.
 
+* On AGH startup read the first line from query logs and store its time value
+* If there's no log file yet, set the time value of the first log event when the file is created
+* If this time value is older than our time limit, perform file rotate procedure
+* While AGH is running, check the previous condition every 24 hours
+
 
 ### API: Get query log
 
@@ -1747,3 +1855,62 @@ Response:
 	}
 
 If no client is configured then authentication is disabled and server sends an empty response.
+
+
+### Safe services
+
+Check if host name is blocked by SB/PC service:
+
+* For each host name component, search for the result in cache by the first 2 bytes of SHA-256 hashes of host name components (max. is 4, i.e. sub2.sub1.host.com), excluding TLD:
+
+		hashes[] = cache_search(sha256(host.com)[0..1])
+		...
+
+	If hash prefix is found, search for a full hash sum in the cached data.
+	If found, the host is blocked.
+	If not found, the host is not blocked - don't request data for this prefix from the Family server again.
+	If hash prefix is not found, request data for this prefix from the Family server.
+
+* Prepare query string which is generated from the first 2 bytes (converted to a 4-character string) of SHA-256 hashes of host name components (max. is 4, i.e. sub2.sub1.host.com), excluding TLD:
+
+		qs = ... + string(sha256(sub.host.com)[0..1]) + "." + string(sha256(host.com)[0..1]) + ".sb.dns.adguard.com."
+
+	For PC `.pc.dns.adguard.com` suffix is used.
+
+* Send TXT query to Family server, receive response which contains the array of complete hash sums of the blocked hosts
+
+* Check if one of received hash sums (`hashes[]`) matches hash sums for our host name
+
+		hashes[0] <> sha256(host.com)
+		hashes[0] <> sha256(sub.host.com)
+		hashes[1] <> sha256(host.com)
+		hashes[1] <> sha256(sub.host.com)
+		...
+
+* Store all received hash sums in cache:
+
+		sha256(host.com)[0..1] -> hashes[0],hashes[1],...
+		sha256(sub.host.com)[0..1] -> hashes[2],...
+		...
+
+
+## ipset
+
+AGH can add IP addresses of the specified in configuration domain names to an ipset list.
+
+Prepare: user creates an ipset list and configures AGH for using it.
+
+	1. User --( ipset create my_ipset hash:ip ) -> OS
+	2. User --( ipset: host.com,host2.com/my_ipset )-> AGH
+
+		Syntax:
+
+			ipset: "DOMAIN[,DOMAIN].../IPSET1_NAME[,IPSET2_NAME]..."
+
+		IPv4 addresses are added to an ipset list with `ipv4` family, IPv6 addresses - to `ipv6` ipset list.
+
+Run-time: AGH adds IP addresses of a domain name to a corresponding ipset list.
+
+	1. AGH --( resolve host.com )-> upstream
+	2. AGH <-( host.com:[1.1.1.1,2.2.2.2] )-- upstream
+	3. AGH --( ipset.add(my_ipset, [1.1.1.1,2.2.2.2] ))-> OS

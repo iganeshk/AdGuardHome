@@ -92,11 +92,12 @@ type dnsConfig struct {
 }
 
 type tlsConfigSettings struct {
-	Enabled        bool   `yaml:"enabled" json:"enabled"`                               // Enabled is the encryption (DOT/DOH/HTTPS) status
-	ServerName     string `yaml:"server_name" json:"server_name,omitempty"`             // ServerName is the hostname of your HTTPS/TLS server
-	ForceHTTPS     bool   `yaml:"force_https" json:"force_https,omitempty"`             // ForceHTTPS: if true, forces HTTP->HTTPS redirect
-	PortHTTPS      int    `yaml:"port_https" json:"port_https,omitempty"`               // HTTPS port. If 0, HTTPS will be disabled
-	PortDNSOverTLS int    `yaml:"port_dns_over_tls" json:"port_dns_over_tls,omitempty"` // DNS-over-TLS port. If 0, DOT will be disabled
+	Enabled         bool   `yaml:"enabled" json:"enabled"`                                 // Enabled is the encryption (DOT/DOH/HTTPS) status
+	ServerName      string `yaml:"server_name" json:"server_name,omitempty"`               // ServerName is the hostname of your HTTPS/TLS server
+	ForceHTTPS      bool   `yaml:"force_https" json:"force_https,omitempty"`               // ForceHTTPS: if true, forces HTTP->HTTPS redirect
+	PortHTTPS       int    `yaml:"port_https" json:"port_https,omitempty"`                 // HTTPS port. If 0, HTTPS will be disabled
+	PortDNSOverTLS  int    `yaml:"port_dns_over_tls" json:"port_dns_over_tls,omitempty"`   // DNS-over-TLS port. If 0, DOT will be disabled
+	PortDNSOverQUIC uint16 `yaml:"port_dns_over_quic" json:"port_dns_over_quic,omitempty"` // DNS-over-QUIC port. If 0, DoQ will be disabled
 
 	// Allow DOH queries via unencrypted HTTP (e.g. for reverse proxying)
 	AllowUnencryptedDOH bool `yaml:"allow_unencrypted_doh" json:"allow_unencrypted_doh"`
@@ -124,12 +125,9 @@ var config = configuration{
 		FiltersUpdateIntervalHours: 24,
 	},
 	TLS: tlsConfigSettings{
-		PortHTTPS:      443,
-		PortDNSOverTLS: 853, // needs to be passed through to dnsproxy
-	},
-	DHCP: dhcpd.ServerConfig{
-		LeaseDuration: 86400,
-		ICMPTimeout:   1000,
+		PortHTTPS:       443,
+		PortDNSOverTLS:  853, // needs to be passed through to dnsproxy
+		PortDNSOverQUIC: 784,
 	},
 	logSettings: logSettings{
 		LogCompress:   false,
@@ -156,6 +154,10 @@ func initConfig() {
 	config.DNS.DnsfilterConf.ParentalCacheSize = 1 * 1024 * 1024
 	config.DNS.DnsfilterConf.CacheTime = 30
 	config.Filters = defaultFilters()
+
+	config.DHCP.Conf4.LeaseDuration = 86400
+	config.DHCP.Conf4.ICMPTimeout = 1000
+	config.DHCP.Conf6.LeaseDuration = 86400
 }
 
 // getConfigFilename returns path to the current config file

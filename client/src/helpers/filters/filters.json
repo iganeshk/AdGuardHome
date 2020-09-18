@@ -25,10 +25,10 @@
             "source": "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt"
         },
         "adaway-default-blocklist": {
-            "name": "AdAway default blocklist",
+            "name": "AdAway Default Blocklist",
             "categoryId": "general",
             "homepage": "https://github.com/AdAway/adaway.github.io/",
-            "source": "https://raw.githubusercontent.com/AdAway/adaway.github.io/master/hosts.txt"
+            "source": "https://adaway.org/hosts.txt"
         },
         "peter-lowe-list": {
             "name": "Peter Lowe's List",
@@ -70,7 +70,7 @@
             "name": "NoCoin Filter List",
             "categoryId": "security",
             "homepage": "https://github.com/hoshsadiq/adblock-nocoin-list/",
-            "source": "https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/nocoin.txt"
+            "source": "https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/hosts.txt"
         },
         "the-big-list-of-hacked-malware-web-sites": {
             "name": "The Big List of Hacked Malware Web Sites",
@@ -153,8 +153,8 @@
         "BarbBlock": {
             "name": "BarbBlock",
             "categoryId": "other",
-            "homepage": "https://ssl.bblck.me/",
-            "source": "https://ssl.bblck.me/blacklists/ublock-origin.txt"
+            "homepage": "https://github.com/paulgb/BarbBlock/",
+            "source": "https://paulgb.github.io/BarbBlock/blacklists/hosts-file.txt"
         }
     }
 }

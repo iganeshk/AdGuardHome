@@ -14,11 +14,14 @@ import queryString from 'query-string';
 import { getTrackerData } from './trackers/trackers';
 
 import {
+    ADDRESS_TYPES,
     CHECK_TIMEOUT,
+    CUSTOM_FILTERING_RULES_ID,
     DEFAULT_DATE_FORMAT_OPTIONS,
     DEFAULT_LANGUAGE,
     DEFAULT_TIME_FORMAT,
     DETAILED_DATE_FORMAT_OPTIONS,
+    DHCP_VALUES_PLACEHOLDERS,
     FILTERED,
     FILTERED_STATUS,
     IP_MATCH_LIST_STATUS,
@@ -95,7 +98,7 @@ export const normalizeLogs = (logs) => logs.map((log) => {
         filterId,
         rule,
         status,
-        serviceName: service_name,
+        service_name,
         originalAnswer: original_answer,
         originalResponse: processResponse(original_answer),
         tracker: getTrackerData(domain),
@@ -190,7 +193,7 @@ export const captitalizeWords = (text) => text.split(/[ -_]/g)
 
 export const getInterfaceIp = (option) => {
     const onlyIPv6 = option.ip_addresses.every((ip) => ip.includes(':'));
-    let interfaceIP = option.ip_addresses[0];
+    let [interfaceIP] = option.ip_addresses;
 
     if (!onlyIPv6) {
         option.ip_addresses.forEach((ip) => {
@@ -203,16 +206,9 @@ export const getInterfaceIp = (option) => {
     return interfaceIP;
 };
 
-export const getIpList = (interfaces) => {
-    let list = [];
-
-    Object.keys(interfaces)
-        .forEach((item) => {
-            list = [...list, ...interfaces[item].ip_addresses];
-        });
-
-    return list.sort();
-};
+export const getIpList = (interfaces) => Object.values(interfaces)
+    .reduce((acc, curr) => acc.concat(curr.ip_addresses), [])
+    .sort();
 
 export const getDnsAddress = (ip, port = '') => {
     const isStandardDnsPort = port === STANDARD_DNS_PORT;
@@ -514,6 +510,18 @@ const isIpMatchCidr = (parsedIp, parsedCidr) => {
     }
 };
 
+export const isIpInCidr = (ip, cidr) => {
+    try {
+        const parsedIp = ipaddr.parse(ip);
+        const parsedCidr = ipaddr.parseCIDR(cidr);
+
+        return isIpMatchCidr(parsedIp, parsedCidr);
+    } catch (e) {
+        console.error(e);
+        return false;
+    }
+};
+
 /**
  * The purpose of this method is to quickly check
  * if this IP can possibly be in the specified CIDR range.
@@ -584,6 +592,29 @@ const isIpQuickMatchCIDR = (ip, listItem) => {
 };
 
 /**
+ *
+ * @param ipOrCidr
+ * @returns {'IP' | 'CIDR' | 'UNKNOWN'}
+ *
+ */
+export const findAddressType = (address) => {
+    try {
+        const cidrMaybe = address.includes('/');
+
+        if (!cidrMaybe && ipaddr.isValid(address)) {
+            return ADDRESS_TYPES.IP;
+        }
+        if (cidrMaybe && ipaddr.parseCIDR(address)) {
+            return ADDRESS_TYPES.CIDR;
+        }
+
+        return ADDRESS_TYPES.UNKNOWN;
+    } catch (e) {
+        return ADDRESS_TYPES.UNKNOWN;
+    }
+};
+
+/**
  * @param ip {string}
  * @param list {string}
  * @returns {'EXACT' | 'CIDR' | 'NOT_FOND'}
@@ -627,6 +658,42 @@ export const getIpMatchListStatus = (ip, list) => {
     }
 };
 
+/**
+ * @param ids {string[]}
+ * @returns {Object}
+ */
+export const separateIpsAndCidrs = (ids) => ids.reduce((acc, curr) => {
+    const addressType = findAddressType(curr);
+
+    if (addressType === ADDRESS_TYPES.IP) {
+        acc.ips.push(curr);
+    }
+    if (addressType === ADDRESS_TYPES.CIDR) {
+        acc.cidrs.push(curr);
+    }
+    return acc;
+}, { ips: [], cidrs: [] });
+
+export const countClientsStatistics = (ids, autoClients) => {
+    const { ips, cidrs } = separateIpsAndCidrs(ids);
+
+    const ipsCount = ips.reduce((acc, curr) => {
+        const count = autoClients[curr] || 0;
+        return acc + count;
+    }, 0);
+
+    const cidrsCount = Object.entries(autoClients)
+        .reduce((acc, curr) => {
+            const [id, count] = curr;
+            if (cidrs.some((cidr) => isIpInCidr(id, cidr))) {
+            // eslint-disable-next-line no-param-reassign
+                acc += count;
+            }
+            return acc;
+        }, 0);
+
+    return ipsCount + cidrsCount;
+};
 
 /**
  * @param {string} elapsedMs
@@ -668,7 +735,194 @@ export const getLogsUrlParams = (search, response_status) => `?${queryString.str
     response_status,
 })}`;
 
-export const processContent = (content) => (Array.isArray(content)
-    ? content.filter(([, value]) => value).reduce((acc, val) => acc.concat(val), [])
-    : content
-);
+export const processContent = (
+    content,
+) => (Array.isArray(content)
+    ? content.filter(([, value]) => value)
+        .reduce((acc, val) => acc.concat(val), [])
+    : content);
+/**
+ * @param object {object}
+ * @param sortKey {string}
+ * @returns {string[]}
+ */
+export const getObjectKeysSorted = (object, sortKey) => Object.entries(object)
+    .sort(([, { [sortKey]: order1 }], [, { [sortKey]: order2 }]) => order1 - order2)
+    .map(([key]) => key);
+
+/**
+ * @param ip
+ * @returns {[IPv4|IPv6, 33|129]}
+ */
+const getParsedIpWithPrefixLength = (ip) => {
+    const MAX_PREFIX_LENGTH_V4 = 32;
+    const MAX_PREFIX_LENGTH_V6 = 128;
+
+    const parsedIp = ipaddr.parse(ip);
+    const prefixLength = parsedIp.kind() === 'ipv4' ? MAX_PREFIX_LENGTH_V4 : MAX_PREFIX_LENGTH_V6;
+
+    // Increment prefix length to always put IP after CIDR, e.g. 127.0.0.1/32, 127.0.0.1
+    return [parsedIp, prefixLength + 1];
+};
+
+/**
+ * Helper function for IP and CIDR comparison (supports both v4 and v6)
+ * @param item - ip or cidr
+ * @returns {number[]}
+ */
+const getAddressesComparisonBytes = (item) => {
+    // Sort ipv4 before ipv6
+    const IP_V4_COMPARISON_CODE = 0;
+    const IP_V6_COMPARISON_CODE = 1;
+
+    const [parsedIp, cidr] = ipaddr.isValid(item)
+        ? getParsedIpWithPrefixLength(item)
+        : ipaddr.parseCIDR(item);
+
+    const [normalizedBytes, ipVersionComparisonCode] = parsedIp.kind() === 'ipv4'
+        ? [parsedIp.toIPv4MappedAddress().parts, IP_V4_COMPARISON_CODE]
+        : [parsedIp.parts, IP_V6_COMPARISON_CODE];
+
+    return [ipVersionComparisonCode, ...normalizedBytes, cidr];
+};
+
+/**
+ * Compare function for IP and CIDR sort in ascending order (supports both v4 and v6)
+ * @param a
+ * @param b
+ * @returns {number} -1 | 0 | 1
+ */
+export const sortIp = (a, b) => {
+    try {
+        const comparisonBytesA = getAddressesComparisonBytes(a);
+        const comparisonBytesB = getAddressesComparisonBytes(b);
+
+        for (let i = 0; i < comparisonBytesA.length; i += 1) {
+            const byteA = comparisonBytesA[i];
+            const byteB = comparisonBytesB[i];
+
+            if (byteA === byteB) {
+                // eslint-disable-next-line no-continue
+                continue;
+            }
+            return byteA > byteB ? 1 : -1;
+        }
+
+        return 0;
+    } catch (e) {
+        console.error(e);
+        return 0;
+    }
+};
+
+/**
+ * @param {array} filters
+ * @param {array} whitelistFilters
+ * @param {number} filterId
+ * @param {function} t - translate
+ * @returns {string}
+ */
+export const getFilterName = (
+    filters,
+    whitelistFilters,
+    filterId,
+    customFilterTranslationKey = 'custom_filter_rules',
+    resolveFilterName = (filter) => (filter ? filter.name : i18n.t('unknown_filter', { filterId })),
+) => {
+    if (filterId === CUSTOM_FILTERING_RULES_ID) {
+        return i18n.t(customFilterTranslationKey);
+    }
+
+    const matchIdPredicate = (filter) => filter.id === filterId;
+    const filter = filters.find(matchIdPredicate) || whitelistFilters.find(matchIdPredicate);
+
+    return resolveFilterName(filter);
+};
+
+/**
+ * @param ip {string}
+ * @param gateway_ip {string}
+ * @returns {{range_end: string, subnet_mask: string, range_start: string,
+ * lease_duration: string, gateway_ip: string}}
+ */
+export const calculateDhcpPlaceholdersIpv4 = (ip, gateway_ip) => {
+    const LAST_OCTET_IDX = 3;
+    const LAST_OCTET_RANGE_START = 100;
+    const LAST_OCTET_RANGE_END = 200;
+
+    const addr = ipaddr.parse(ip);
+    addr.octets[LAST_OCTET_IDX] = LAST_OCTET_RANGE_START;
+    const range_start = addr.toString();
+
+    addr.octets[LAST_OCTET_IDX] = LAST_OCTET_RANGE_END;
+    const range_end = addr.toString();
+
+    const {
+        subnet_mask,
+        lease_duration,
+    } = DHCP_VALUES_PLACEHOLDERS.ipv4;
+
+    return {
+        gateway_ip: gateway_ip || ip,
+        subnet_mask,
+        range_start,
+        range_end,
+        lease_duration,
+    };
+};
+
+export const calculateDhcpPlaceholdersIpv6 = () => {
+    const {
+        range_start,
+        range_end,
+        lease_duration,
+    } = DHCP_VALUES_PLACEHOLDERS.ipv6;
+
+    return {
+        range_start,
+        range_end,
+        lease_duration,
+    };
+};
+
+/**
+ * Add ip_addresses property - concatenated ipv4_addresses and ipv6_addresses for every interface
+ * @param interfaces
+ * @param interfaces.ipv4_addresses {string[]}
+ * @param interfaces.ipv6_addresses {string[]}
+ * @returns interfaces Interfaces enriched with ip_addresses property
+ */
+export const enrichWithConcatenatedIpAddresses = (interfaces) => Object.entries(interfaces)
+    .reduce((acc, [k, v]) => {
+        const ipv4_addresses = v.ipv4_addresses ?? [];
+        const ipv6_addresses = v.ipv6_addresses ?? [];
+
+        acc[k].ip_addresses = ipv4_addresses.concat(ipv6_addresses);
+        return acc;
+    }, interfaces);
+
+export const isScrolledIntoView = (el) => {
+    const rect = el.getBoundingClientRect();
+    const elemTop = rect.top;
+    const elemBottom = rect.bottom;
+
+    return elemTop < window.innerHeight && elemBottom >= 0;
+};
+
+/**
+ * If this is a manually created client, return its name.
+ * If this is a "runtime" client, return it's IP address.
+ * @param clients {Array.<object>}
+ * @param ip {string}
+ * @returns {string}
+ */
+export const getBlockingClientName = (clients, ip) => {
+    for (let i = 0; i < clients.length; i += 1) {
+        const client = clients[i];
+
+        if (client.ids.includes(ip)) {
+            return client.name;
+        }
+    }
+    return ip;
+};

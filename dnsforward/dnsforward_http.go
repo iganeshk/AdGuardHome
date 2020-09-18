@@ -22,8 +22,9 @@ func httpError(r *http.Request, w http.ResponseWriter, code int, format string, 
 }
 
 type dnsConfigJSON struct {
-	Upstreams  []string `json:"upstream_dns"`
-	Bootstraps []string `json:"bootstrap_dns"`
+	Upstreams     []string `json:"upstream_dns"`
+	UpstreamsFile string   `json:"upstream_dns_file"`
+	Bootstraps    []string `json:"bootstrap_dns"`
 
 	ProtectionEnabled bool   `json:"protection_enabled"`
 	RateLimit         uint32 `json:"ratelimit"`
@@ -43,6 +44,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	resp := dnsConfigJSON{}
 	s.RLock()
 	resp.Upstreams = stringArrayDup(s.conf.UpstreamDNS)
+	resp.UpstreamsFile = s.conf.UpstreamDNSFileName
 	resp.Bootstraps = stringArrayDup(s.conf.BootstrapDNS)
 
 	resp.ProtectionEnabled = s.conf.ProtectionEnabled
@@ -74,7 +76,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 func checkBlockingMode(req dnsConfigJSON) bool {
 	bm := req.BlockingMode
-	if !(bm == "default" || bm == "nxdomain" || bm == "null_ip" || bm == "custom_ip") {
+	if !(bm == "default" || bm == "refused" || bm == "nxdomain" || bm == "null_ip" || bm == "custom_ip") {
 		return false
 	}
 
@@ -91,6 +93,18 @@ func checkBlockingMode(req dnsConfigJSON) bool {
 	}
 
 	return true
+}
+
+// Validate bootstrap server address
+func checkBootstrap(addr string) error {
+	if addr == "" { // additional check is required because NewResolver() allows empty address
+		return fmt.Errorf("invalid bootstrap server address: empty")
+	}
+	_, err := upstream.NewResolver(addr, 0)
+	if err != nil {
+		return fmt.Errorf("invalid bootstrap server address: %s", err)
+	}
+	return nil
 }
 
 // nolint(gocyclo) - we need to check each JSON field separately
@@ -113,9 +127,9 @@ func (s *Server) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if js.Exists("bootstrap_dns") {
-		for _, host := range req.Bootstraps {
-			if err := checkPlainDNS(host); err != nil {
-				httpError(r, w, http.StatusBadRequest, "%s can not be used as bootstrap dns cause: %s", host, err)
+		for _, boot := range req.Bootstraps {
+			if err := checkBootstrap(boot); err != nil {
+				httpError(r, w, http.StatusBadRequest, "%s can not be used as bootstrap dns cause: %s", boot, err)
 				return
 			}
 		}
@@ -142,6 +156,11 @@ func (s *Server) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 
 	if js.Exists("upstream_dns") {
 		s.conf.UpstreamDNS = req.Upstreams
+		restart = true
+	}
+
+	if js.Exists("upstream_dns_file") {
+		s.conf.UpstreamDNSFileName = req.UpstreamsFile
 		restart = true
 	}
 
@@ -258,7 +277,7 @@ func ValidateUpstreams(upstreams []string) error {
 	return nil
 }
 
-var protocols = []string{"tls://", "https://", "tcp://", "sdns://"}
+var protocols = []string{"tls://", "https://", "tcp://", "sdns://", "quic://"}
 
 func validateUpstream(u string) (bool, error) {
 	// Check if user tries to specify upstream for domain

@@ -20,6 +20,7 @@ const Tooltip = ({
     trigger = 'hover',
     delayShow = SHOW_TOOLTIP_DELAY,
     delayHide = HIDE_TOOLTIP_DELAY,
+    onVisibilityChange,
 }) => {
     const { t } = useTranslation();
     const touchEventsAvailable = 'ontouchstart' in window;
@@ -34,33 +35,48 @@ const Tooltip = ({
         delayShowValue = 0;
     }
 
+    const renderTooltip = ({ tooltipRef, getTooltipProps }) => (
+            <div
+                    {...getTooltipProps({
+                        ref: tooltipRef,
+                        className,
+                    })}
+            >
+                {typeof content === 'string' ? t(content) : content}
+            </div>
+    );
+
+    const renderTrigger = ({ getTriggerProps, triggerRef }) => (
+            <span
+                    {...getTriggerProps({
+                        ref: triggerRef,
+                        className: triggerClass,
+                    })}
+            >
+                    {children}
+                </span>
+    );
+
+    renderTooltip.propTypes = {
+        tooltipRef: propTypes.object,
+        getTooltipProps: propTypes.func,
+    };
+
+    renderTrigger.propTypes = {
+        triggerRef: propTypes.object,
+        getTriggerProps: propTypes.func,
+    };
+
     return (
         <TooltipTrigger
             placement={placement}
             trigger={triggerValue}
             delayHide={delayHideValue}
             delayShow={delayShowValue}
-            tooltip={({ tooltipRef, getTooltipProps }) => (
-                <div
-                    {...getTooltipProps({
-                        ref: tooltipRef,
-                        className,
-                    })}
-                >
-                    {typeof content === 'string' ? t(content) : content}
-                </div>
-            )}
+            tooltip={renderTooltip}
+            onVisibilityChange={onVisibilityChange}
         >
-            {({ getTriggerProps, triggerRef }) => (
-                <span
-                    {...getTriggerProps({
-                        ref: triggerRef,
-                        className: triggerClass,
-                    })}
-                >
-                    {children}
-                </span>
-            )}
+            {renderTrigger}
         </TooltipTrigger>
     );
 };
@@ -76,10 +92,11 @@ Tooltip.propTypes = {
     ).isRequired,
     placement: propTypes.string,
     trigger: propTypes.string,
-    delayHide: propTypes.string,
-    delayShow: propTypes.string,
+    delayHide: propTypes.number,
+    delayShow: propTypes.number,
     className: propTypes.string,
     triggerClass: propTypes.string,
+    onVisibilityChange: propTypes.func,
 };
 
 export default Tooltip;

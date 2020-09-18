@@ -16,25 +16,9 @@
 
 Follow any of the below method and then deploy the binary
 
-* #### Method: Docker ([iganesh/adguardhome/tags](https://hub.docker.com/r/iganesh/adguardhome/tags))
+* #### Method: Downloading the latest release
 
-    ```
-    # only edge builds at the moment
-    docker pull iganesh/adguardhome:latest
-    docker run --name adguardhome \
-    -v /my/own/workdir:/opt/adguardhome/work \
-    -v /my/own/confdir:/opt/adguardhome/conf \
-    -p 53:53/tcp \
-    -p 53:53/udp \
-    -p 67:67/udp \
-    -p 68:68/tcp \
-    -p 68:68/udp \
-    -p 80:80/tcp \
-    -p 443:443/tcp \
-    -p 853:853/tcp \
-    -p 3000:3000/tcp \
-    -d iganesh/adguardhome
-    ```
+    [https://github.com/iganeshk/AdGuardHome/releases](https://github.com/iganeshk/AdGuardHome/releases)
 
 * #### Method: Cloning the Repository
 
@@ -42,7 +26,7 @@ Follow any of the below method and then deploy the binary
     git clone https://github.com/iganeshk/AdGuardHome
     cd AdGuardHome
     # comment out target builds which aren't required in the release.sh script
-    ./release.sh
+    make release
     ```
 
 * #### Method: Applying the patch
@@ -52,13 +36,8 @@ Follow any of the below method and then deploy the binary
     git checkout master/your-branch
     git apply dark-mustard-theme.patch
     # comment out target builds which aren't required in the release.sh script
-    ./release.sh
+    make release
     ```
-
-* #### Method: Downloading the latest release
-
-    [https://github.com/iganeshk/AdGuardHome/releases](https://github.com/iganeshk/AdGuardHome/releases)
-
 
 * #### Deploy the binary (if built from source/downloaded latest release)
 

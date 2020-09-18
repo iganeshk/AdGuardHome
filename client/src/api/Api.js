@@ -1,37 +1,44 @@
 import axios from 'axios';
 
 import { getPathWithQueryString } from '../helpers/helpers';
-import { R_PATH_LAST_PART } from '../helpers/constants';
+import { QUERY_LOGS_PAGE_LIMIT, HTML_PAGES, R_PATH_LAST_PART } from '../helpers/constants';
+import { BASE_URL } from '../../constants';
 
 class Api {
-    baseUrl = 'control';
+    baseUrl = BASE_URL;
 
     async makeRequest(path, method = 'POST', config) {
+        const url = `${this.baseUrl}/${path}`;
+
         try {
             const response = await axios({
-                url: `${this.baseUrl}/${path}`,
+                url,
                 method,
                 ...config,
             });
             return response.data;
         } catch (error) {
-            console.error(error);
-            const errorPath = `${this.baseUrl}/${path}`;
+            const errorPath = url;
             if (error.response) {
-                if (error.response.status === 403) {
-                    const loginPageUrl = window.location.href.replace(R_PATH_LAST_PART, '/login.html');
+                const { pathname } = document.location;
+                const shouldRedirect = pathname !== HTML_PAGES.LOGIN
+                        && pathname !== HTML_PAGES.INSTALL;
+
+                if (error.response.status === 403 && shouldRedirect) {
+                    const loginPageUrl = window.location.href
+                        .replace(R_PATH_LAST_PART, HTML_PAGES.LOGIN);
                     window.location.replace(loginPageUrl);
                     return false;
                 }
 
                 throw new Error(`${errorPath} | ${error.response.data} | ${error.response.status}`);
             }
-            throw new Error(`${errorPath} | ${error.message ? error.message : error}`);
+            throw new Error(`${errorPath} | ${error.message || error}`);
         }
     }
 
     // Global methods
-    GLOBAL_STATUS = { path: 'status', method: 'GET' };
+    GLOBAL_STATUS = { path: 'status', method: 'GET' }
 
     GLOBAL_TEST_UPSTREAM_DNS = { path: 'test_upstream_dns', method: 'POST' };
 
@@ -529,6 +536,8 @@ class Api {
 
     getQueryLog(params) {
         const { path, method } = this.GET_QUERY_LOG;
+        // eslint-disable-next-line no-param-reassign
+        params.limit = QUERY_LOGS_PAGE_LIMIT;
         const url = getPathWithQueryString(path, params);
         return this.makeRequest(url, method);
     }
